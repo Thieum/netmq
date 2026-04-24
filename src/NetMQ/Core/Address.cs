@@ -59,6 +59,12 @@ namespace NetMQ.Core
         public const string EpgmProtocol = "epgm";
 
         /// <summary>
+        /// The string-literal "udp"
+        /// - this denotes UDP (User Datagram Protocol) communication.
+        /// </summary>
+        public const string UdpProtocol = "udp";
+
+        /// <summary>
         /// Interface IZAddress specifies that Resolve and property Address must be implemented.
         /// </summary>
         public interface IZAddress

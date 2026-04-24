@@ -10,6 +10,7 @@ namespace NetMQ.Core.Patterns
     {
         private readonly Dictionary<string, HashSet<Pipe>> m_subscriptions;
         private readonly Distribution m_distribution;
+        private readonly HashSet<Pipe> m_udpPipes;
 
         internal Radio(Ctx parent, int threadId, int socketId) : base(parent, threadId, socketId, true)
         {
@@ -17,12 +18,17 @@ namespace NetMQ.Core.Patterns
 
             m_subscriptions = new Dictionary<string, HashSet<Pipe>>();
             m_distribution = new Distribution();
+            m_udpPipes = new HashSet<Pipe>();
         }
 
         protected override void XAttachPipe(Pipe pipe, bool icanhasall)
         {
             pipe.SetNoDelay();
             m_distribution.Attach(pipe);
+
+            if (icanhasall)
+                m_udpPipes.Add(pipe);
+
             XReadActivated(pipe);
         }
 
@@ -67,6 +73,8 @@ namespace NetMQ.Core.Patterns
 
         protected override void XTerminated(Pipe pipe)
         {
+            m_udpPipes.Remove(pipe);
+
             foreach (var pipes in m_subscriptions.Values)
                 pipes.Remove(pipe);
 
@@ -89,6 +97,10 @@ namespace NetMQ.Core.Patterns
                 foreach (var pipe in range)
                     m_distribution.Match(pipe);
             }
+
+            // For UDP pipes (icanhasall), always match regardless of subscription
+            foreach (var pipe in m_udpPipes)
+                m_distribution.Match(pipe);
 
             m_distribution.SendToMatching(ref msg);
 

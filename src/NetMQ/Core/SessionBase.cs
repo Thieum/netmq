@@ -29,6 +29,7 @@ using NetMQ.Core.Transports;
 using NetMQ.Core.Transports.Ipc;
 using NetMQ.Core.Transports.Pgm;
 using NetMQ.Core.Transports.Tcp;
+using NetMQ.Core.Transports.Udp;
 
 namespace NetMQ.Core
 {
@@ -521,7 +522,8 @@ namespace NetMQ.Core
             // For delayed connect situations, terminate the pipe
             // and reestablish later on
             if (m_pipe != null && m_options.DelayAttachOnConnect
-                && m_addr.Protocol != Address.PgmProtocol && m_addr.Protocol != Address.EpgmProtocol && 
+                && m_addr.Protocol != Address.PgmProtocol && m_addr.Protocol != Address.EpgmProtocol
+                && m_addr.Protocol != Address.UdpProtocol && 
                 m_options.SocketType != ZmqSocketType.Peer)
             {
                 m_pipe.Hiccup();
@@ -576,6 +578,13 @@ namespace NetMQ.Core
                     Assumes.NotNull(m_addr.Resolved);
                     pgmSender.Init((PgmAddress)m_addr.Resolved);
                     SendAttach(this, pgmSender);
+                    return;
+                }
+                case Address.UdpProtocol:
+                {
+                    Assumes.NotNull(m_addr.Resolved);
+                    var udpEngine = new UdpEngine(m_options, m_addr, false);
+                    SendAttach(this, udpEngine);
                     return;
                 }
             }
