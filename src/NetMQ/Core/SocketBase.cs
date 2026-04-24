@@ -290,6 +290,30 @@ namespace NetMQ.Core
                                 "Multicast protocols are not supported by socket type: " + m_options.SocketType);
                     }
                     break;
+                case Address.UdpProtocol:
+                    // UDP is supported for most socket types.
+                    switch (m_options.SocketType)
+                    {
+                        case ZmqSocketType.Radio:
+                        case ZmqSocketType.Dish:
+                        case ZmqSocketType.Pub:
+                        case ZmqSocketType.Sub:
+                        case ZmqSocketType.Xpub:
+                        case ZmqSocketType.Xsub:
+                        case ZmqSocketType.Req:
+                        case ZmqSocketType.Rep:
+                        case ZmqSocketType.Push:
+                        case ZmqSocketType.Pull:
+                        case ZmqSocketType.Pair:
+                        case ZmqSocketType.Dealer:
+                        case ZmqSocketType.Router:
+                            // All is well
+                            break;
+                        default:
+                            throw new ProtocolNotSupportedException(
+                                "UDP protocol is not supported by socket type: " + m_options.SocketType);
+                    }
+                    break;
                 default:
                     throw new ProtocolNotSupportedException("Invalid protocol: " + protocol);
             }
@@ -623,6 +647,26 @@ namespace NetMQ.Core
                             AddEndpoint(addr, listener, null);
                             break;
                         }
+                    case Address.UdpProtocol:
+                        {
+                            var listener = new Transports.Udp.UdpListener(ioThread, this, m_options);
+
+                            try
+                            {
+                                listener.SetAddress(address);
+                                m_port = listener.Port;
+                            }
+                            catch (NetMQException ex)
+                            {
+                                listener.Destroy();
+                                EventBindFailed(addr, ex.ErrorCode);
+                                throw;
+                            }
+
+                            m_options.LastEndpoint = listener.Address;
+                            AddEndpoint(addr, listener, null);
+                            break;
+                        }
                     default:
                         {
                             throw new ArgumentException($"Address {addr} has unsupported protocol: {protocol}",
@@ -832,15 +876,22 @@ namespace NetMQ.Core
                             paddr.Resolved.Resolve(address, m_options.IPv4Only);
                             break;
                         }
+                    case Address.UdpProtocol:
+                        {
+                            paddr.Resolved = new Transports.Udp.UdpAddress();
+                            paddr.Resolved.Resolve(address, m_options.IPv4Only);
+                            break;
+                        }
                 }
 
                 // Create session.
                 SessionBase session = SessionBase.Create(ioThread, true, this, m_options, paddr);
                 Assumes.NotNull(session);
 
-                // PGM does not support subscription forwarding; ask for all data to be
+                // PGM and UDP do not support subscription forwarding; ask for all data to be
                 // sent to this pipe.
-                bool icanhasall = protocol == Address.PgmProtocol || protocol == Address.EpgmProtocol;
+                bool icanhasall = protocol == Address.PgmProtocol || protocol == Address.EpgmProtocol
+                    || protocol == Address.UdpProtocol;
                 Pipe? newPipe = null;
 
                 if (!m_options.DelayAttachOnConnect || icanhasall || m_options.SocketType == ZmqSocketType.Peer)
