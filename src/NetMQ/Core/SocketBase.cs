@@ -22,6 +22,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
 using System.Net.Sockets;
@@ -70,7 +71,7 @@ namespace NetMQ.Core
         private readonly IMailbox m_mailbox;
 
         /// <summary>List of attached pipes.</summary>
-        private readonly List<Pipe> m_pipes = new List<Pipe>();
+        private ImmutableArray<Pipe> m_pipes = ImmutableArray<Pipe>.Empty;
 
         /// <summary>Reaper's poller.</summary>
         private Poller? m_poller;
@@ -329,7 +330,7 @@ namespace NetMQ.Core
             // First, register the pipe so that we can terminate it later on.
 
             pipe.SetEventSink(this);
-            m_pipes.Add(pipe);
+            ImmutableInterlocked.Update(ref m_pipes, static (arr, p) => arr.Add(p), pipe);
 
             // Let the derived socket type know about new pipe.
             XAttachPipe(pipe, icanhasall);
@@ -1360,14 +1361,20 @@ namespace NetMQ.Core
             // will be initiated.
             UnregisterEndpoints(this);
 
+            // Read the immutable snapshot. Because m_pipes is an ImmutableArray, any
+            // concurrent AttachPipe call on a thread-safe socket will atomically swap in
+            // a NEW array, leaving this local copy untouched. No ToArray() copy is needed.
+            var pipes = m_pipes;
+
             // Ask all attached pipes to terminate.
-            foreach (var pipe in m_pipes)
+            foreach (var pipe in pipes)
             {
                 pipe.SendDisconnectMessage();
                 pipe.Terminate(false);
             }
 
-            RegisterTermAcks(m_pipes.Count);
+            // Register term-acks exactly for the pipes we asked to terminate.
+            RegisterTermAcks(pipes.Length);
 
             // Continue the termination process immediately.
             base.ProcessTerm(linger);
@@ -1600,7 +1607,7 @@ namespace NetMQ.Core
 
             // Remove the pipe from the list of attached pipes and confirm its
             // termination if we are already shutting down.
-            m_pipes.Remove(pipe);
+            ImmutableInterlocked.Update(ref m_pipes, static (arr, p) => arr.Remove(p), pipe);
             if (IsTerminating)
                 UnregisterTermAck();
         }

@@ -38,6 +38,12 @@
     <PackageReference Include="NaCl.Net" Version="0.1.13" />
   </ItemGroup>
 
+  <!-- System.Collections.Immutable is in the BCL for net10.0+; only needed as an
+       explicit reference for .NETFramework (net472) and .NETStandard (netstandard2.1). -->
+  <ItemGroup Condition=" '$(TargetFrameworkIdentifier)' != '.NETCoreApp' ">
+    <PackageReference Include="System.Collections.Immutable" Version="10.0.7" />
+  </ItemGroup>
+
   <ItemGroup Condition=" '$(TargetFrameworkIdentifier)' != '.NETFramework' ">
     <PackageReference Include="System.ServiceModel.Primitives" Version="10.0.652802" />
     <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.6" />
