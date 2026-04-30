@@ -23,9 +23,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Sockets;
-#if !NETFRAMEWORK
-using System.Runtime.InteropServices;
-#endif
 using System.Threading;
 
 namespace NetMQ.Core.Utils
@@ -256,14 +253,21 @@ namespace NetMQ.Core.Utils
         }
 
         /// <summary>
+        /// Maximum timeout (in microseconds) passed to Socket.Select.
+        /// On macOS ARM64, <c>Socket.Select</c> can fail to wake up when a TCP
+        /// loopback socket becomes readable. Capping the timeout ensures the loop
+        /// re-evaluates <see cref="m_stopping"/> periodically so that
+        /// <see cref="Stop"/> requests are never missed.
+        /// </summary>
+        private const int MaxSelectTimeoutMicroseconds = 500_000; // 500,000 µs = 500 ms
+
+        /// <summary>
         /// This method is the polling-loop that is invoked on a background thread when Start is called.
         /// As long as Stop hasn't been called: execute the timers, and invoke the handler-methods on each of the saved PollSets.
         /// </summary>
         private void Loop()
         {
             var readList = new List<Socket>();
-//            var writeList = new List<Socket>();
-            var errorList = new List<Socket>();
 
             while (!m_stopping)
             {
@@ -275,28 +279,19 @@ namespace NetMQ.Core.Utils
                 int timeout = ExecuteTimers();
 
                 readList.AddRange(m_checkRead.ToArray());
-//                writeList.AddRange(m_checkWrite.ToArray());
-                errorList.AddRange(m_checkError.ToArray());
 
                 try
                 {
                     timeout = timeout != 0 ? timeout * 1000 : -1;
-#if NETFRAMEWORK
-                    Socket.Select(readList, null, errorList, timeout);
-#else
-                    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                    {
-                        // Socket.Select does not work properly on macOS .NET Core when readList and errorList are passed
-                        // together. To avoid this problem, we call the Select function separately for errorList.
-                        // Please refer to this issue: https://github.com/dotnet/corefx/issues/39617
-                        SocketUtility.Select(readList, null, null, timeout);
-                        SocketUtility.Select(null, null, errorList, timeout);
-                    }
-                    else
-                    {
-                        Socket.Select(readList, null, errorList, timeout);
-                    }
-#endif
+
+                    // Cap the timeout so the loop wakes up periodically. This
+                    // prevents an indefinite hang on platforms where Socket.Select
+                    // does not reliably detect readability on TCP loopback pairs
+                    // (the Signaler mechanism used by the Mailbox).
+                    if (timeout < 0 || timeout > MaxSelectTimeoutMicroseconds)
+                        timeout = MaxSelectTimeoutMicroseconds;
+
+                    Socket.Select(readList, null, null, timeout);
                 }
                 catch (SocketException)
                 {
@@ -308,36 +303,6 @@ namespace NetMQ.Core.Utils
                 {
                     if (pollSet.Cancelled)
                         continue;
-
-                    // Invoke its handler's InEvent if it's in our error-list.
-                    if (errorList.Contains(pollSet.Socket))
-                    {
-                        try
-                        {
-                            pollSet.Handler.InEvent();
-                        }
-                        catch (TerminatingException)
-                        {
-                        }
-                    }
-
-                    if (pollSet.Cancelled)
-                        continue;
-
-//                    // Invoke its handler's OutEvent if it's in our write-list.
-//                    if (writeList.Contains(pollSet.Socket))
-//                    {
-//                        try
-//                        {
-//                            pollSet.Handler.OutEvent();
-//                        }
-//                        catch (TerminatingException)
-//                        {
-//                        }
-//                    }
-//
-//                    if (pollSet.Cancelled)
-//                        continue;
 
                     // Invoke its handler's InEvent if it's in our read-list.
                     if (readList.Contains(pollSet.Socket))
@@ -352,8 +317,6 @@ namespace NetMQ.Core.Utils
                     }
                 }
 
-                errorList.Clear();
-//                writeList.Clear();
                 readList.Clear();
 
                 if (m_retired)

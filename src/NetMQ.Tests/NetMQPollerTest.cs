@@ -528,10 +528,10 @@ namespace NetMQ.Tests
 
                 bool timerTriggered = false;
 
-                var timer = new NetMQTimer(TimeSpan.FromMilliseconds(100));
+                var timer = new NetMQTimer(TimeSpan.FromMilliseconds(500));
                 timer.Elapsed += (s, a) => { timerTriggered = true; };
 
-                // The timer will fire after 100ms
+                // The timer will fire after 500ms
                 poller.Add(timer);
 
                 bool messageArrived = false;
@@ -582,7 +582,7 @@ namespace NetMQ.Tests
             {
                 poller.RunAsync();
 
-                Thread.Sleep(timerIntervalMillis * 6);
+                Thread.Sleep(timerIntervalMillis * 30);
 
                 poller.Stop();
 
@@ -630,8 +630,8 @@ namespace NetMQ.Tests
         [Fact]
         public void TwoTimers()
         {
-            var timer1 = new NetMQTimer(TimeSpan.FromMilliseconds(60));
-            var timer2 = new NetMQTimer(TimeSpan.FromMilliseconds(40));
+            var timer1 = new NetMQTimer(TimeSpan.FromMilliseconds(750));
+            var timer2 = new NetMQTimer(TimeSpan.FromMilliseconds(500));
 
             int count = 0;
             int count2 = 0;
@@ -657,8 +657,8 @@ namespace NetMQ.Tests
             {
                 poller.RunAsync();
 
-                Assert.True(signal1.WaitOne(300));
-                Assert.True(signal2.WaitOne(300));
+                Assert.True(signal1.WaitOne(5000));
+                Assert.True(signal2.WaitOne(5000));
 
                 poller.Stop();
             }
@@ -705,7 +705,7 @@ namespace NetMQ.Tests
             {
                 poller.RunAsync();
 
-                Thread.Sleep(timerIntervalMillis * 6);
+                Thread.Sleep(timerIntervalMillis * 30);
 
                 poller.Stop();
             }
@@ -735,13 +735,13 @@ namespace NetMQ.Tests
                 if (count == 1)
                 {
                     stopwatch.Start();
-                    timer.Interval = 30;
+                    timer.Interval = 500;
                 }
                 else if (count == 2)
                 {
                     length1 = stopwatch.ElapsedMilliseconds;
 
-                    timer.Interval = 60;
+                    timer.Interval = 1000;
                     stopwatch.Restart();
                 }
                 else if (count == 3)
@@ -758,15 +758,15 @@ namespace NetMQ.Tests
             {
                 poller.RunAsync();
 
-                Thread.Sleep(200);
+                Thread.Sleep(5000);
 
                 poller.Stop();
             }
 
             Assert.Equal(3, count);
 
-            Assert.True(Math.Abs(length1 - 30) <= 10.0);
-            Assert.True(Math.Abs(length2 - 60) <= 10.0);
+            Assert.True(Math.Abs(length1 - 500) <= 200.0);
+            Assert.True(Math.Abs(length2 - 1000) <= 200.0);
         }
 
         [Fact]

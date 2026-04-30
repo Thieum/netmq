@@ -97,33 +97,37 @@ namespace NetMQ.Tests
             {
                 var pubSync = new AutoResetEvent(false);
                 var payload = new byte[300];
-                const int waitTime = 500;
+                const int waitTime = 1500;
+                int port = 0;
 
                 var t1 = new Task(() =>
                 {
                     using (var pubSocket = new PublisherSocket())
                     {
-                        pubSocket.Bind("tcp://127.0.0.1:12345");
-                        pubSync.WaitOne();
+                        port = pubSocket.BindRandomPort("tcp://127.0.0.1");
+                        pubSync.Set(); // signal port is ready
+                        pubSync.WaitOne(TimeSpan.FromSeconds(10));
                         Thread.Sleep(waitTime);
                         pubSocket.SendFrame(payload);
-                        pubSync.WaitOne();
+                        pubSync.WaitOne(TimeSpan.FromSeconds(10));
                     }
                 }, TaskCreationOptions.LongRunning);
 
                 var t2 = new Task(() =>
                 {
+                    pubSync.WaitOne(TimeSpan.FromSeconds(10)); // wait for bind
+
                     using (var subSocket = new SubscriberSocket())
                     {
-                        subSocket.Connect("tcp://127.0.0.1:12345");
+                        subSocket.Connect($"tcp://127.0.0.1:{port}");
                         subSocket.Subscribe("");
-                        Thread.Sleep(100);
+                        Thread.Sleep(500);
                         pubSync.Set();
 
                         NetMQMessage? msg = null;
                         Assert.False(subSocket.TryReceiveMultipartMessage(TimeSpan.FromMilliseconds(100), ref msg));
 
-                        Assert.True(subSocket.TryReceiveMultipartMessage(TimeSpan.FromMilliseconds(waitTime), ref msg));
+                        Assert.True(subSocket.TryReceiveMultipartMessage(TimeSpan.FromSeconds(10), ref msg));
                         Assert.NotNull(msg);
                         Assert.Equal(1, msg!.FrameCount);
                         Assert.Equal(300, msg.First.MessageSize);
@@ -639,21 +643,21 @@ namespace NetMQ.Tests
                 using (var dealer = new DealerSocket())
                 {
                     dealer.Options.Identity = Encoding.ASCII.GetBytes("dealer");
-                    dealer.Bind("tcp://localhost:6667");
+                    int port = dealer.BindRandomPort("tcp://localhost");
 
                     using (var router = new RouterSocket())
                     {
                         router.Options.RouterMandatory = true;
-                        router.Connect("tcp://localhost:6667");
+                        router.Connect($"tcp://localhost:{port}");
                         Thread.Sleep(100);
 
                         router.SendMoreFrame("dealer").SendFrame("Hello");
                         var message = dealer.ReceiveFrameString();
                         Assert.Equal("Hello", message);
 
-                        router.Disconnect("tcp://localhost:6667");
+                        router.Disconnect($"tcp://localhost:{port}");
                         Thread.Sleep(1000);
-                        router.Connect("tcp://localhost:6667");
+                        router.Connect($"tcp://localhost:{port}");
                         Thread.Sleep(100);
 
                         router.SendMoreFrame("dealer").SendFrame("Hello");
@@ -671,7 +675,7 @@ namespace NetMQ.Tests
                 using (var dealer = new DealerSocket())
                 {
                     dealer.Options.Identity = Encoding.ASCII.GetBytes("dealer");
-                    dealer.Bind("tcp://localhost:6667");
+                    dealer.BindRandomPort("tcp://localhost");
 
                     using (var router = new RouterSocket())
                     {
@@ -691,7 +695,7 @@ namespace NetMQ.Tests
             using (var dealer = new DealerSocket())
             {
                 dealer.Options.Identity = Encoding.ASCII.GetBytes("dealer");
-                dealer.Bind("tcp://localhost:6667");
+                dealer.BindRandomPort("tcp://localhost");
 
                 using (var router = new RouterSocket())
                 {

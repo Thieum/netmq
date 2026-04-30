@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Threading;
 using NetMQ.Sockets;
 using Xunit;
 
@@ -61,6 +62,25 @@ namespace NetMQ.Tests
             new DealerSocket(">tcp://localhost:5557");
 
             NetMQConfig.Cleanup(block: false);
+        }
+
+        [Fact]
+        public void NoBlockCompletesInBoundedTime()
+        {
+            // Regression test for https://github.com/zeromq/netmq/issues/1040
+            // Cleanup(block: false) must return quickly even when a socket has not been
+            // disposed and the internal poller is actively calling Socket.Select.
+            // On macOS, Socket.Select can block indefinitely when passed both a read list
+            // and an error list, causing Cleanup to hang forever without this guard.
+            _ = new DealerSocket(">tcp://localhost:5557"); // intentionally not disposed
+
+            // Run cleanup on a background (daemon) thread so the process can still exit
+            // if the thread gets stuck. IsBackground = true prevents it from blocking
+            // process shutdown if a regression causes Cleanup to hang.
+            var thread = new Thread(() => NetMQConfig.Cleanup(block: false)) { IsBackground = true };
+            thread.Start();
+            Assert.True(thread.Join(TimeSpan.FromSeconds(10)),
+                "Cleanup(block: false) did not complete within 10 seconds");
         }
     }
 }
